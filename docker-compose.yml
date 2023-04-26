@@ -1,0 +1,36 @@
+version: '3.8'
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME}
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${SUBNET}.0/24
+          gateway: ${SUBNET}.1
+
+services:  
+  postgresql-master:
+    build:
+      context: images/postgresql-master
+    container_name: ${COMPOSE_PROJECT_NAME}-pg-01
+    restart: always
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./volumes/postgresql-master-data:/var/lib/postgresql/data:rw
+
+  postgresql-slave:
+    build:
+      context: images/postgresql-slave
+    container_name: ${COMPOSE_PROJECT_NAME}-pg-02
+    restart: always
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./volumes/postgresql-slave-data:/var/lib/postgresql/data:rw
