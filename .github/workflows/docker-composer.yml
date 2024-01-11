@@ -1,0 +1,23 @@
+name: Docker build CI
+
+on:
+  pull_request:
+    branches:
+      - 'master'
+    paths:
+      - 'docker-containers/**'
+      - 'docker-compose.yml'
+      - '!**.md'
+
+env:
+  SUBNET: 192.168.50
+  COMPOSE_PROJECT_NAME: project
+
+jobs:
+  build-docker-containers:
+    name: Docker build CI
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build the Docker containers
+      run: docker-compose up -d --build php nginx socket postgresql-master postgresql-slave redis rabbitmq clickhouse mongo-01
