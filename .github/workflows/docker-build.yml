@@ -5,7 +5,8 @@ on:
     branches:
       - 'master'
     paths:
-      - 'docker-containers/**'
+      - 'images/**'
+      - 'scripts/**'
       - 'docker-compose.yml'
       - '!**.md'
 
@@ -20,4 +21,4 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build the Docker containers
-      run: docker-compose up -d --build php nginx socket postgresql-master postgresql-slave redis rabbitmq clickhouse mongo-01
+      run: make init
