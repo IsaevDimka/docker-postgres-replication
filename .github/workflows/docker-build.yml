@@ -4,10 +4,6 @@ on:
   pull_request:
     branches:
       - 'master'
-    paths:
-      - 'docker-containers/**'
-      - 'docker-compose.yml'
-      - '!**.md'
 
 env:
   SUBNET: 192.168.50
@@ -20,4 +16,4 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build the Docker containers
-      run: docker-compose up -d --build php nginx socket postgresql-master postgresql-slave redis rabbitmq clickhouse mongo-01
+      run: make init
