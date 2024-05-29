@@ -5,9 +5,6 @@ on:
     branches:
       - 'master'
     paths:
-      - 'images/**'
-      - 'scripts/**'
-      - 'docker-compose.yml'
       - '!**.md'
 
 env:
