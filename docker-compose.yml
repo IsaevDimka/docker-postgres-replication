@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   default:
     name: ${COMPOSE_PROJECT_NAME}
@@ -34,3 +32,23 @@ services:
       - "5434:5432"
     volumes:
       - ./volumes/postgresql-slave-data:/var/lib/postgresql/data:rw
+
+  pgbouncer:
+    image: bitnami/pgbouncer:1.22.1
+    container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer
+    restart: always
+    environment:
+      POSTGRESQL_HOST: postgresql-slave
+      POSTGRESQL_DATABASE: maindb
+      POSTGRESQL_USERNAME : user_owner
+      POSTGRESQL_PASSWORD: 123
+      PGBOUNCER_DATABASE: maindb
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./images/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      - postgresql-master
+      - postgresql-slave

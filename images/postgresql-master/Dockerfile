@@ -1,3 +1,3 @@
 FROM postgres:16.3-alpine
 
-RUN echo "alias psql_master='psql -h localhost -p 5432 -U postgres'" >> ~/.bashrc
+RUN echo "alias psql_master='psql -h localhost -p 5432 -U user_owner -d maindb'" >> ~/.bashrc
