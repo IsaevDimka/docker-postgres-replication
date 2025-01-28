@@ -10,7 +10,7 @@ env:
   COMPOSE_PROJECT_NAME: project
 
 jobs:
-  build-docker-containers:
+  build-docker-containers: 
     name: Docker build CI
     runs-on: ubuntu-latest
     steps:

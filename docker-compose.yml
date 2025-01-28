@@ -34,7 +34,7 @@ services:
       - ./volumes/postgresql-slave-data:/var/lib/postgresql/data:rw
 
   pgbouncer:
-    image: bitnami/pgbouncer:1.22.1
+    image: bitnami/pgbouncer:1.24.0
     container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer
     restart: always
     environment:
