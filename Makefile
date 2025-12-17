@@ -48,4 +48,4 @@ docker-stop:
 
 .PHONY: init-postgres-replication
 init-postgres-replication:
-	$(V)sh scripts/shell/init_postgres_replication.sh
+	$(V)bash scripts/shell/init_postgres_replication.sh
