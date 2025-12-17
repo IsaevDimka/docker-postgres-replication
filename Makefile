@@ -49,7 +49,3 @@ docker-stop:
 .PHONY: init-postgres-replication
 init-postgres-replication:
 	$(V)sh scripts/shell/init_postgres_replication.sh
-
-.PHONY: init-postgres-migrations
-init-postgres-migrations:
-	$(V)cat "./scripts/migrations/init.sql" | docker compose exec -T postgresql-master psql -h localhost -p 5432 -U postgres 1>/dev/null 2>&1
