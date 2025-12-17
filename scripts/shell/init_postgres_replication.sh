@@ -61,7 +61,7 @@ rm -rf "${SLAVE_VOL:?}/"*
 mkdir -p "${SLAVE_VOL}"
 
 echo "▶ Basebackup via one-shot container"
-docker compose run --rm --no-deps --entrypoint sh ${SLAVE} -c "
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" run --rm --no-deps --entrypoint sh ${SLAVE} -c "
 set -e
 pg_basebackup -h ${MASTER} -U ${REPL_USER} \
   -D \"\$PGDATA\" \
