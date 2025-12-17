@@ -30,7 +30,6 @@ docker-clear:
 .PHONY: docker-up
 docker-up:
 	$(V)docker compose pull
-	$(V)$(eval LOCAL_IP=$(shell echo `hostname -I | awk '{print $$1}'`))
 	$(V)docker compose build --build-arg local_ip=$(LOCAL_IP)
 	$(V)docker compose up -d
 
