@@ -13,8 +13,8 @@ help:
 
 .PHONY: init
 init: \
+	docker-clear \
 	init-postgres-replication \
-	init-postgres-migrations \
 	docker-up
 
 .PHONY: docker-down
@@ -30,14 +30,21 @@ docker-clear:
 .PHONY: docker-up
 docker-up:
 	$(V)docker compose pull
-	$(V)$(eval LOCAL_IP=$(shell echo `hostname -I | awk '{print $$1}'`))
 	$(V)docker compose build --build-arg local_ip=$(LOCAL_IP)
 	$(V)docker compose up -d
+
+.PHONY: docker-start
+docker-start:
+ifeq ($(TEST),1)
+	$(V)echo "TEST mode is active"
+	$(eval COMPOSE_FILES += $(COMPOSE_TEST_FILE))
+endif
+	$(V)docker compose ${COMPOSE_FILES} up -d
+
+.PHONY: docker-stop
+docker-stop:
+	$(V)docker compose ${COMPOSE_FILES} down
 
 .PHONY: init-postgres-replication
 init-postgres-replication:
 	$(V)sh scripts/shell/init_postgres_replication.sh
-
-.PHONY: init-postgres-migrations
-init-postgres-migrations:
-	$(V)cat "./scripts/migrations/init.sql" | docker compose exec -T postgresql-master psql -h localhost -p 5432 -U postgres 1>/dev/null 2>&1

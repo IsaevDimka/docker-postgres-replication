@@ -1,41 +1,102 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-echo "Docker up postgresql-master and postgresql-slave"
-docker compose up -d --force-recreate postgresql-master postgresql-slave
+REPL_USER=replicator
+REPL_PASS='rwzWbVq29K3lpXYL'
+SLOT=replication_slot_slave1
 
-while [ -z "$(docker compose logs postgresql-master | grep 'database system is ready to accept connections')" ]
-do
-  echo "awaiting postgresql initialization for 5s..."
-  sleep 5
-done
+SLAVE_VOL="./volumes/postgresql-slave-data"
 
-echo 'Copy from master postgresql.conf'
-cp ./images/postgresql-master/postgresql.conf ./volumes/postgresql-master-data/postgresql.conf
-echo 'Copy from master pg_hba.conf'
-cp ./images/postgresql-master/pg_hba.conf ./volumes/postgresql-master-data/pg_hba.conf
-echo 'Create user replicator'
-docker compose exec -it postgresql-master sh -c "psql -h localhost -p 5432 -U postgres -c 'CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '\''rwzWbVq29K3lpXYL'\'';'"
+wait_pg() {
+  local svc="$1"
+  local user="${2:-postgres}"
+  local timeout="${3:-120}" # seconds
+  local waited=0
+
+  echo "▶ Wait ${svc} ready (timeout ${timeout}s)"
+  until docker compose exec -T "$svc" pg_isready -U "$user" >/dev/null 2>&1; do
+    sleep 3
+    waited=$((waited + 3))
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "❌ Timeout waiting for ${svc}"
+      return 1
+    fi
+  done
+}
+
+echo "▶ Start master"
+docker compose up -d --force-recreate postgresql-master
 sleep 3
-echo 'Create replication_slot_slave1'
-docker compose exec -it postgresql-master sh -c "psql -h localhost -p 5432 -U postgres -c 'SELECT * FROM pg_create_physical_replication_slot('\''replication_slot_slave1'\'');'"
-sleep 3
-docker compose exec -it postgresql-master sh -c "psql -h localhost -p 5432 -U postgres -c 'SELECT * FROM pg_replication_slots;'"
-sleep 3
-echo 'Running pg_basebackup'
-docker compose exec -it postgresql-master sh -c "pg_basebackup -D /var/lib/postgresql/data/postgres-slave -S replication_slot_slave1 -X stream -P -U replicator -Fp -R"
-sleep 5
-echo 'Make postgresql-slave-data'
-rm -rf ./volumes/postgresql-slave-data/*
-echo 'Move backup from master to slave'
-mv ./volumes/postgresql-master-data/postgres-slave/* ./volumes/postgresql-slave-data
-echo 'Cleanup backup folder'
-rm -rf ./volumes/postgresql-master-data/postgres-slave
-echo 'Copy slave postgresql.conf'
-cp ./images/postgresql-slave/postgresql.conf ./volumes/postgresql-slave-data/postgresql.conf
-echo 'Copy slave postgresql.auto.conf'
-cp ./images/postgresql-slave/postgresql.auto.conf ./volumes/postgresql-slave-data/postgresql.auto.conf
-echo 'Restart postgresql-master'
+
+wait_pg postgresql-master
+
+echo "▶ Apply configs master"
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+ALTER SYSTEM SET listen_addresses = '*';
+ALTER SYSTEM SET wal_level = 'replica';
+ALTER SYSTEM SET max_wal_senders = 10;
+ALTER SYSTEM SET max_replication_slots = 10;
+ALTER SYSTEM SET hot_standby = on;
+ALTER SYSTEM SET hba_file = '/etc/postgresql/pg_hba.conf';
+SQL
+
+docker compose exec -T postgresql-master psql -U postgres -c "select pg_reload_conf();"
 docker compose restart postgresql-master
+
+wait_pg postgresql-master
+
+echo "▶ (Optional) show which pg_hba.conf is used"
+docker compose exec -T postgresql-master psql -U postgres -c "
+SHOW wal_level;
+SHOW max_wal_senders;
+SHOW max_replication_slots;
+SHOW hot_standby;
+SHOW listen_addresses;
+show hba_file;
+"
+
+echo "▶ Init DB + roles"
+cat ./scripts/migrations/init.sql | docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1
+
+echo "▶ Ensure replicator"
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+DO \$do\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${REPL_USER}') THEN
+    CREATE ROLE ${REPL_USER} LOGIN REPLICATION PASSWORD '${REPL_PASS}';
+  END IF;
+END
+\$do\$;
+SQL
+
+echo "▶ Ensure slot"
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+DO \$do\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name='${SLOT}') THEN
+    PERFORM pg_create_physical_replication_slot('${SLOT}');
+  END IF;
+END
+\$do\$;
+SQL
+
+echo "▶ Basebackup via one-shot container"
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" run --rm --no-deps --entrypoint sh postgresql-slave -c "
+set -e
+pg_basebackup -h postgresql-master -U ${REPL_USER} \
+  -D \"\$PGDATA\" \
+  -X stream -R -S ${SLOT} -Fp -P
+"
+
+echo "▶ Start slave"
+docker compose up -d postgresql-slave
 sleep 5
-echo 'Build postgresql-slave'
-docker compose up -d --build postgresql-slave
+
+wait_pg postgresql-slave
+
+echo "▶ Checks"
+docker compose exec -T postgresql-slave psql -U postgres -c "\du"
+docker compose exec -T postgresql-slave psql -U postgres -c "select pg_is_in_recovery();"
+docker compose exec -T postgresql-master psql -U postgres -c "\du"
+docker compose exec -T postgresql-master psql -U postgres -c "select client_addr, state from pg_stat_replication;"
+
+echo "✅ DONE"

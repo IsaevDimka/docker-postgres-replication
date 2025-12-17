@@ -14,16 +14,10 @@ If changed env `COMPOSE_PROJECT_NAME` need change docker container name in `imag
 ## Check Replication Status:
 
 ```shell
-docker exec -it postgresql-master bash
+docker compose exec -it postgresql-slave psql -U postgres -c "select pg_is_in_recovery();"
+docker compose exec postgresql-master psql -U postgres -c \
+"select client_addr, state from pg_stat_replication;"
 ```
-
-```shell
-psql_master
-```
-* After entering psql
-  ```sql
-  SELECT * FROM pg_stat_replication;
-  ```
 
 ## License
 [MIT License](LICENSE) (MIT)
