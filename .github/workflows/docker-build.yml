@@ -15,13 +15,5 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v2
-
-            - name: Fix permissions (volumes/workspace)
-              run: |
-                  sudo chown -R runner:runner "$GITHUB_WORKSPACE" || true
-                  mkdir -p ./volumes
-                  sudo chown -R runner:runner ./volumes || true
-                  sudo chmod -R u+rwX ./volumes || true
-
             - name: Build the Docker containers
               run: make init

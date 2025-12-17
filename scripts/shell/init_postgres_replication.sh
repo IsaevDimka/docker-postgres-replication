@@ -1,36 +1,64 @@
 #!/usr/bin/env bash
 
-MASTER=postgresql-master
-SLAVE=postgresql-slave
 REPL_USER=replicator
 REPL_PASS='rwzWbVq29K3lpXYL'
 SLOT=replication_slot_slave1
 
-MASTER_VOL="./volumes/postgresql-master-data"
 SLAVE_VOL="./volumes/postgresql-slave-data"
 
-docker compose up -d --force-recreate ${MASTER}
+wait_pg() {
+  local svc="$1"
+  local user="${2:-postgres}"
+  local timeout="${3:-120}" # seconds
+  local waited=0
+
+  echo "▶ Wait ${svc} ready (timeout ${timeout}s)"
+  until docker compose exec -T "$svc" pg_isready -U "$user" >/dev/null 2>&1; do
+    sleep 3
+    waited=$((waited + 3))
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "❌ Timeout waiting for ${svc}"
+      return 1
+    fi
+  done
+}
+
+echo "▶ Start master"
+docker compose up -d --force-recreate postgresql-master
 sleep 3
 
-echo "▶ Apply configs into master"
-cp ./images/postgresql-master/postgresql.conf ./volumes/postgresql-master-data/data/postgresql.conf
-cp ./images/postgresql-master/pg_hba.conf ./volumes/postgresql-master-data/data/pg_hba.conf
-docker compose exec -T ${MASTER} psql -U postgres -c "select pg_reload_conf();"
-sleep 3
+wait_pg postgresql-master
 
-echo "▶ Wait master ready"
-until docker compose exec -T ${MASTER} pg_isready -U postgres >/dev/null 2>&1; do
-  sleep 2
-done
+echo "▶ Apply configs master"
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+ALTER SYSTEM SET listen_addresses = '*';
+ALTER SYSTEM SET wal_level = 'replica';
+ALTER SYSTEM SET max_wal_senders = 10;
+ALTER SYSTEM SET max_replication_slots = 10;
+ALTER SYSTEM SET hot_standby = on;
+ALTER SYSTEM SET hba_file = '/etc/postgresql/pg_hba.conf';
+SQL
+
+docker compose exec -T postgresql-master psql -U postgres -c "select pg_reload_conf();"
+docker compose restart postgresql-master
+
+wait_pg postgresql-master
 
 echo "▶ (Optional) show which pg_hba.conf is used"
-docker compose exec -T ${MASTER} psql -U postgres -tAc "show hba_file;" || true
+docker compose exec -T postgresql-master psql -U postgres -c "
+SHOW wal_level;
+SHOW max_wal_senders;
+SHOW max_replication_slots;
+SHOW hot_standby;
+SHOW listen_addresses;
+show hba_file;
+"
 
 echo "▶ Init DB + roles"
-cat ./scripts/migrations/init.sql | docker compose exec -T ${MASTER} psql -U postgres -v ON_ERROR_STOP=1
+cat ./scripts/migrations/init.sql | docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1
 
 echo "▶ Ensure replicator"
-docker compose exec -T ${MASTER} psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
 DO \$do\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${REPL_USER}') THEN
@@ -41,7 +69,7 @@ END
 SQL
 
 echo "▶ Ensure slot"
-docker compose exec -T ${MASTER} psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+docker compose exec -T postgresql-master psql -U postgres -v ON_ERROR_STOP=1 <<SQL
 DO \$do\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name='${SLOT}') THEN
@@ -51,26 +79,24 @@ END
 \$do\$;
 SQL
 
-echo "▶ Stop slave + wipe data"
-docker compose stop ${SLAVE} || true
-rm -rf "${SLAVE_VOL:?}/"*
-mkdir -p "${SLAVE_VOL}"
-
 echo "▶ Basebackup via one-shot container"
-docker compose --project-name "${COMPOSE_PROJECT_NAME}" run --rm --no-deps --entrypoint sh ${SLAVE} -c "
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" run --rm --no-deps --entrypoint sh postgresql-slave -c "
 set -e
-pg_basebackup -h ${MASTER} -U ${REPL_USER} \
+pg_basebackup -h postgresql-master -U ${REPL_USER} \
   -D \"\$PGDATA\" \
   -X stream -R -S ${SLOT} -Fp -P
 "
 
 echo "▶ Start slave"
-docker compose up -d ${SLAVE}
+docker compose up -d postgresql-slave
 sleep 5
 
+wait_pg postgresql-slave
+
 echo "▶ Checks"
-docker compose exec -T ${SLAVE} psql -U postgres -c "select pg_is_in_recovery();"
-docker compose exec -T ${MASTER} psql -U postgres -c "select client_addr, state from pg_stat_replication;"
-docker compose exec -T ${SLAVE} psql -U postgres -c "\du"
+docker compose exec -T postgresql-slave psql -U postgres -c "\du"
+docker compose exec -T postgresql-slave psql -U postgres -c "select pg_is_in_recovery();"
+docker compose exec -T postgresql-master psql -U postgres -c "\du"
+docker compose exec -T postgresql-master psql -U postgres -c "select client_addr, state from pg_stat_replication;"
 
 echo "✅ DONE"
