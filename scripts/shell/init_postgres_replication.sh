@@ -11,16 +11,12 @@ SLAVE_VOL="./volumes/postgresql-slave-data"
 
 docker compose up -d --force-recreate ${MASTER}
 sleep 3
-echo "▶ Stop master (to apply pg_hba.conf on startup)"
-docker compose stop ${MASTER} || true
 
-echo "▶ Apply configs into master volume BEFORE start"
-mkdir -p "${MASTER_VOL}"
+echo "▶ Apply configs into master"
 cp ./images/postgresql-master/postgresql.conf ./volumes/postgresql-master-data/data/postgresql.conf
 cp ./images/postgresql-master/pg_hba.conf ./volumes/postgresql-master-data/data/pg_hba.conf
-
-echo "▶ Start master"
-docker compose up -d --force-recreate ${MASTER}
+docker compose exec -T ${MASTER} psql -U postgres -c "select pg_reload_conf();"
+sleep 3
 
 echo "▶ Wait master ready"
 until docker compose exec -T ${MASTER} pg_isready -U postgres >/dev/null 2>&1; do
