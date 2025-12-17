@@ -1,19 +1,27 @@
 name: Docker build CI
 
 on:
-  pull_request:
-    branches:
-      - 'master'
+    pull_request:
+        branches:
+            - 'master'
 
 env:
-  SUBNET: 192.168.50
-  COMPOSE_PROJECT_NAME: project
+    SUBNET: 192.168.50
+    COMPOSE_PROJECT_NAME: project
 
 jobs:
-  build-docker-containers: 
-    name: Docker build CI
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build the Docker containers
-      run: make init
+    build-docker-containers:
+        name: Docker build CI
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+
+            - name: Fix permissions (volumes/workspace)
+              run: |
+                  sudo chown -R runner:runner "$GITHUB_WORKSPACE" || true
+                  mkdir -p ./volumes
+                  sudo chown -R runner:runner ./volumes || true
+                  sudo chmod -R u+rwX ./volumes || true
+
+            - name: Build the Docker containers
+              run: make init
