@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 MASTER=postgresql-master
 SLAVE=postgresql-slave
