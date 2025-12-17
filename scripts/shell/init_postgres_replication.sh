@@ -64,9 +64,6 @@ docker compose stop "${SLAVE}" || true
 rm -rf "${SLAVE_VOL:?}/"*
 mkdir -p "${SLAVE_VOL}"
 
-# ВАЖНО: делаем basebackup НЕ через `compose run` (в CI это часто другая сеть),
-# и НЕ стираем PGDATA у живого postgres (иначе Error 137).
-# Поэтому: поднимаем контейнер SLAVE, но сразу выполняем basebackup и рестартим.
 echo "▶ Start slave container (for basebackup only)"
 docker compose up -d --force-recreate "${SLAVE}"
 
@@ -76,7 +73,6 @@ until docker compose exec -T "${SLAVE}" pg_isready -U postgres >/dev/null 2>&1; 
 done
 
 echo "▶ Stop postgres inside slave container (avoid wiping live PGDATA)"
-# мягко остановим сервер внутри контейнера
 docker compose exec -T "${SLAVE}" sh -lc 'pg_ctl -D "$PGDATA" -m fast stop || true'
 
 echo "▶ Run pg_basebackup FROM SLAVE into its PGDATA"
