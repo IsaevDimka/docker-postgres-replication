@@ -8,18 +8,24 @@ networks:
         - subnet: ${SUBNET}.0/24
           gateway: ${SUBNET}.1
 
-services:  
+services:
   postgresql-master:
     build:
       context: images/postgresql-master
     container_name: ${COMPOSE_PROJECT_NAME}-pg-01
     restart: always
     environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
+      POSTGRES_HOST_AUTH_METHOD: trust
+      PGDATA: /var/lib/postgresql/data
     ports:
       - "5432:5432"
     volumes:
       - ./volumes/postgresql-master-data:/var/lib/postgresql/data:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -tAc \"select 1 from pg_roles where rolname='user_owner'\" | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   postgresql-slave:
     build:
@@ -27,21 +33,30 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}-pg-02
     restart: always
     environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
+      POSTGRES_HOST_AUTH_METHOD: trust
+      PGDATA: /var/lib/postgresql/data
     ports:
       - "5434:5432"
     volumes:
       - ./volumes/postgresql-slave-data:/var/lib/postgresql/data:rw
+    depends_on:
+      postgresql-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -tAc \"select pg_is_in_recovery()::int\" | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
 
-  pgbouncer:
-    image: bitnami/pgbouncer:1.24.0
-    container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer
+  pgbouncer-master:
+    image: bitnamilegacy/pgbouncer:1.24.1
+    container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer-01
     restart: always
     environment:
-      POSTGRESQL_HOST: postgresql-slave
+      POSTGRESQL_HOST: postgresql-master
       POSTGRESQL_DATABASE: maindb
-      POSTGRESQL_USERNAME : user_owner
-      POSTGRESQL_PASSWORD: 123
+      POSTGRESQL_USERNAME: user_owner
+      POSTGRESQL_PASSWORD: "123"
       PGBOUNCER_DATABASE: maindb
       PGBOUNCER_POOL_MODE: transaction
       PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
@@ -50,5 +65,25 @@ services:
     volumes:
       - ./images/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     depends_on:
-      - postgresql-master
-      - postgresql-slave
+      postgresql-master:
+        condition: service_healthy
+
+  pgbouncer-slave:
+    image: bitnamilegacy/pgbouncer:1.24.1
+    container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer-02
+    restart: always
+    environment:
+      POSTGRESQL_HOST: postgresql-slave
+      POSTGRESQL_DATABASE: maindb
+      POSTGRESQL_USERNAME: user_owner
+      POSTGRESQL_PASSWORD: "123"
+      PGBOUNCER_DATABASE: maindb
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "6434:6432"
+    volumes:
+      - ./images/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      postgresql-slave:
+        condition: service_healthy
