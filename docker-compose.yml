@@ -51,16 +51,20 @@ services:
       retries: 60
 
   pgbouncer-master:
-    image: bitnamilegacy/pgbouncer:1.24.1
+    image: pgbouncer/pgbouncer:1.25.2
     container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer-01
     restart: always
     environment:
-      POSTGRESQL_HOST: postgresql-master
-      POSTGRESQL_DATABASE: maindb
-      POSTGRESQL_USERNAME: user_owner
-      POSTGRESQL_PASSWORD: "123"
-      PGBOUNCER_DATABASE: maindb
+      DATABASES_HOST: postgresql-master
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: maindb
+      DATABASES_USER: user_owner
+      DATABASES_PASSWORD: "123"
+      DATABASES_CLIENT_SIDE_DBNAME: maindb
+      PGBOUNCER_LISTEN_PORT: 6432
       PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_AUTH_TYPE: md5
+      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
       PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
     ports:
       - "6432:6432"
@@ -71,16 +75,20 @@ services:
         condition: service_healthy
 
   pgbouncer-slave:
-    image: bitnamilegacy/pgbouncer:1.24.1
+    image: pgbouncer/pgbouncer:1.25.2
     container_name: ${COMPOSE_PROJECT_NAME}-pgbouncer-02
     restart: always
     environment:
-      POSTGRESQL_HOST: postgresql-slave
-      POSTGRESQL_DATABASE: maindb
-      POSTGRESQL_USERNAME: user_owner
-      POSTGRESQL_PASSWORD: "123"
-      PGBOUNCER_DATABASE: maindb
+      DATABASES_HOST: postgresql-slave
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: maindb
+      DATABASES_USER: user_owner
+      DATABASES_PASSWORD: "123"
+      DATABASES_CLIENT_SIDE_DBNAME: maindb
+      PGBOUNCER_LISTEN_PORT: 6432
       PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_AUTH_TYPE: md5
+      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
       PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
     ports:
       - "6434:6432"
